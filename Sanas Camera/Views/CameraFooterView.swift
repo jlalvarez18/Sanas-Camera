@@ -10,14 +10,20 @@ import SwiftData
 
 struct CameraFooterView: View {
     @EnvironmentObject private var camera: CameraModel
-    
     @Environment(\.modelContext) private var context
-    
+
+    // Callback provided by the parent to trigger navigation
+    var onShowLibrary: () -> Void
+
     private let footerHeight: CGFloat = 120
     private let recordSize: CGFloat = 64
     private let librarySize: CGFloat = 50
     private let libraryCornerRadius: CGFloat = 16
     private let edgePadding: CGFloat = 16
+
+    init(onShowLibrary: @escaping () -> Void = {}) {
+        self.onShowLibrary = onShowLibrary
+    }
 
     var body: some View {
         ZStack {
@@ -31,10 +37,8 @@ struct CameraFooterView: View {
                     } else {
                         camera.startRecording { url in
                             // Persist to SwiftData as VideoItem
-                            // You can inject modelContext here or handle in a higher level.
-                            // Example (requires Environment(\.modelContext)):
-                             let item = VideoItem(timestamp: Date(), filePath: url.path)
-                             context.insert(item)
+                            let item = VideoItem(timestamp: Date(), filePath: url.path)
+                            context.insert(item)
                         }
                     }
                 } label: {
@@ -53,7 +57,7 @@ struct CameraFooterView: View {
                 Spacer()
 
                 Button {
-                    // TODO: Open photo library
+                    onShowLibrary()
                 } label: {
                     // Replace with a real thumbnail when available
                     Image(systemName: "photo.stack")
@@ -69,7 +73,7 @@ struct CameraFooterView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Video Library")
             }
-            
+
         }
         .padding(.vertical, 32)
         .padding(.horizontal, edgePadding)
@@ -79,12 +83,16 @@ struct CameraFooterView: View {
 }
 
 #Preview {
-    VStack(spacing: 0) {
-        Color.white
-            .frame(maxHeight: .infinity)
-        CameraFooterView()
+    NavigationStack {
+        VStack(spacing: 0) {
+            Color.white
+                .frame(maxHeight: .infinity)
+            CameraFooterView()
+        }
+        .navigationBarTitleDisplayMode(.inline)
     }
     .preferredColorScheme(.dark)
     .environmentObject(CameraModel())
     .modelContainer(for: VideoItem.self, inMemory: true)
 }
+
