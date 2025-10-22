@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import AVKit
+import LucideIcons
 
 struct GalleryView: View {
     @Environment(\.modelContext) private var context
@@ -132,16 +133,15 @@ private struct VideoCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             
             // Play overlay
-            Circle()
-                .fill(.black.opacity(0.25))
-                .frame(width: 56, height: 56)
-                .overlay(
-                    Image(systemName: "play.fill")
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
-                        .offset(x: 2)
-                )
-                .shadow(radius: 8, y: 4)
+            Button {
+                
+            } label: {
+                Image(uiImage: Lucide.play)
+                    .resizable()
+                    .renderingMode(.template)
+                    .frame(width: 40, height: 40)
+                    .foregroundStyle(.white)
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)

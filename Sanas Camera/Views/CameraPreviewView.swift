@@ -6,12 +6,13 @@
 //
 
 import SwiftUI
+import LucideIcons
 
 struct CameraPreviewView: View {
     @EnvironmentObject private var camera: CameraModel
     
     private let cornerRadius: CGFloat = 16
-    private let buttonSize: CGFloat = 44
+    private let buttonSize: CGFloat = 24
     private let buttonPadding: CGFloat = 16
 
     var body: some View {
@@ -40,25 +41,29 @@ struct CameraPreviewView: View {
                     Spacer()
                     
                     HStack {
-                        RoundedButton(
-                            systemName: "bolt.fill",
-                            foreground: .white,
-                            background: .black.opacity(0.35),
-                            size: buttonSize
-                        ) {
+                        Button {
                             // TODO: action for left button
+                        } label: {
+                            Image(uiImage: Lucide.zap)
+                                .resizable()
+                                .renderingMode(.template)
+                                .foregroundStyle(.white)
+                                .frame(width: buttonSize, height: buttonSize)
                         }
+                        .frame(width: buttonSize, height: buttonSize)
                         
                         Spacer()
                         
-                        RoundedButton(
-                            systemName: "camera.viewfinder",
-                            foreground: .white,
-                            background: .black.opacity(0.35),
-                            size: buttonSize
-                        ) {
+                        Button {
                             // TODO: action for right button
+                        } label: {
+                            Image(uiImage: Lucide.switchCamera)
+                                .resizable()
+                                .renderingMode(.template)
+                                .foregroundStyle(.white)
+                                .frame(width: buttonSize, height: buttonSize)
                         }
+                        .frame(width: buttonSize, height: buttonSize)
                     }
                 }
                 .padding(.horizontal, buttonPadding)
