@@ -35,9 +35,8 @@ struct CameraFooterView: View {
                     if camera.isRecording {
                         camera.stopRecording()
                     } else {
-                        camera.startRecording { url in
-                            // Persist to SwiftData as VideoItem
-                            let item = VideoItem(timestamp: Date(), filePath: url.path)
+                        camera.startRecording { item in
+                            // Persist to SwiftData
                             context.insert(item)
                         }
                     }

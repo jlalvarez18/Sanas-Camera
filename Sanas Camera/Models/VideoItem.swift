@@ -12,9 +12,11 @@ import SwiftData
 final class VideoItem {
     var timestamp: Date
     var filePath: String
+    var thumbFilePath: String
 
-    init(timestamp: Date, filePath: String) {
+    init(timestamp: Date, filePath: String, thumbFilePath: String) {
         self.timestamp = timestamp
         self.filePath = filePath
+        self.thumbFilePath = thumbFilePath
     }
 }

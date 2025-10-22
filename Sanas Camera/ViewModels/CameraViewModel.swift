@@ -19,6 +19,11 @@ final class CameraModel: NSObject, ObservableObject {
         case denied
         case restricted
     }
+    
+    struct RecordingResult {
+        let videoURL: URL
+        let thumbURL: URL
+    }
 
     @Published private(set) var authorization: AuthorizationState = .notDetermined
     @Published private(set) var isSessionRunning: Bool = false
@@ -35,10 +40,12 @@ final class CameraModel: NSObject, ObservableObject {
     private let captureService = CaptureService()
 
     // Completion handler for recording
-    private var recordingCompletion: ((URL) -> Void)?
+    private var recordingCompletion: ((VideoItem) -> Void)?
     
     // Keep a task reference so we can cancel observation if needed
     private var statusObserverTask: Task<Void, Never>?
+    
+    private var currentRecordingUUID: UUID?
 
     override init() {
         // Precompute current authorization
@@ -117,7 +124,7 @@ final class CameraModel: NSObject, ObservableObject {
 
     // MARK: - Recording
 
-    func startRecording(onSaved: @escaping (URL) -> Void) {
+    func startRecording(onSaved: @escaping (VideoItem) -> Void) {
         guard isSessionRunning else {
             lastError = "Session is not running."
             return
@@ -125,9 +132,12 @@ final class CameraModel: NSObject, ObservableObject {
         guard !isRecording else { return }
 
         recordingCompletion = onSaved
+        
+        let newUUID = UUID()
+        currentRecordingUUID = newUUID
 
         // Create destination URL in Documents
-        let outputURL = CameraModel.makeDocumentsURLWithTimestamp(extension: "mov")
+        let outputURL = CameraModel.makeVideoURL(uuid: newUUID)
 
         Task {
             // Make sure we receive delegate callbacks
@@ -150,22 +160,57 @@ final class CameraModel: NSObject, ObservableObject {
 extension CameraModel: AVCaptureFileOutputRecordingDelegate {
     nonisolated func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         Task {
+            guard let recordingUUID = await self.currentRecordingUUID else {
+                return
+            }
+            
+            let thumbURL = try await generateThumbnail(forVideoAt: outputFileURL, at: CMTime(seconds: 1, preferredTimescale: 600), recordingUUID: recordingUUID)
+            
             await MainActor.run { [weak self] in
                 guard let self = self else {
                     return
                 }
-
+                
                 let completion = self.recordingCompletion
                 
                 if let error {
                     self.lastError = "Recording failed: \(error.localizedDescription)"
                 } else if let completion {
-                    completion(outputFileURL)
+                    // Store only filenames (stable across app restarts/reinstalls)
+                    let item = VideoItem(
+                        timestamp: Date(),
+                        filePath: outputFileURL.lastPathComponent,
+                        thumbFilePath: thumbURL.lastPathComponent
+                    )
+                    completion(item)
                 }
 
                 self.recordingCompletion = nil
             }
         }
+    }
+    
+    func generateThumbnail(forVideoAt url: URL, at time: CMTime, recordingUUID: UUID) async throws -> URL {
+        let asset = AVURLAsset(url: url)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.requestedTimeToleranceAfter = .zero
+        imageGenerator.requestedTimeToleranceBefore = .zero
+        
+        let cgImage = try await imageGenerator.image(at: time).image
+        
+        let uiImage = UIImage(cgImage: cgImage)
+        
+        guard let jpgData = uiImage.jpegData(compressionQuality: 0.7) else {
+            throw NSError(domain: "CameraModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to generate thumbnail data"])
+        }
+        
+        let outputURL = CameraModel.makeThumbnailURL(uuid: recordingUUID)
+        
+        try jpgData.write(to: outputURL, options: .atomic)
+        
+        return outputURL
     }
 }
 
@@ -181,13 +226,21 @@ private extension CameraModel {
         @unknown default: return .denied
         }
     }
+    
+    static func makeVideoURL(uuid: UUID) -> URL {
+        return makeDocumentsURLWithTimestamp(uuid: uuid, suffix: "VID_", extension: "mov")
+    }
+    
+    static func makeThumbnailURL(uuid: UUID) -> URL {
+        return makeDocumentsURLWithTimestamp(uuid: uuid, suffix: "THUMB_", extension: "jpg")
+    }
 
-    static func makeDocumentsURLWithTimestamp(extension ext: String) -> URL {
+    static func makeDocumentsURLWithTimestamp(uuid: UUID, suffix: String, extension ext: String) -> URL {
         let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let name = "VID_\(formatter.string(from: Date())).\(ext)"
+        
+        let name = "\(suffix)\(uuid.uuidString).\(ext)"
+        
         return docs.appendingPathComponent(name, isDirectory: false)
     }
     
@@ -209,3 +262,4 @@ private extension CameraModel {
         }
     }
 }
+
