@@ -1,5 +1,5 @@
 //
-//  Item.swift
+//  VideoItem.swift
 //  Sanas Camera
 //
 //  Created by Juan Alvarez on 10/22/25.
@@ -9,10 +9,12 @@ import Foundation
 import SwiftData
 
 @Model
-final class Item {
+final class VideoItem {
     var timestamp: Date
-    
-    init(timestamp: Date) {
+    var filePath: String
+
+    init(timestamp: Date, filePath: String) {
         self.timestamp = timestamp
+        self.filePath = filePath
     }
 }

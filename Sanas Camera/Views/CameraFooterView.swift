@@ -6,8 +6,13 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct CameraFooterView: View {
+    @EnvironmentObject private var camera: CameraModel
+    
+    @Environment(\.modelContext) private var context
+    
     private let footerHeight: CGFloat = 120
     private let recordSize: CGFloat = 64
     private let librarySize: CGFloat = 50
@@ -21,14 +26,24 @@ struct CameraFooterView: View {
                 Spacer(minLength: 0)
 
                 Button {
-                    // TODO: Start/stop recording
+                    if camera.isRecording {
+                        camera.stopRecording()
+                    } else {
+                        camera.startRecording { url in
+                            // Persist to SwiftData as VideoItem
+                            // You can inject modelContext here or handle in a higher level.
+                            // Example (requires Environment(\.modelContext)):
+                             let item = VideoItem(timestamp: Date(), filePath: url.path)
+                             context.insert(item)
+                        }
+                    }
                 } label: {
-                    Image(systemName: "record.circle")
+                    Image(systemName: camera.isRecording ? "stop.circle" : "record.circle")
                         .resizable()
                         .frame(width: recordSize, height: recordSize)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Record")
+                .accessibilityLabel(camera.isRecording ? "Stop Recording" : "Start Recording")
 
                 Spacer(minLength: 0)
             }
@@ -52,7 +67,7 @@ struct CameraFooterView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Photo Library")
+                .accessibilityLabel("Video Library")
             }
             
         }
@@ -70,4 +85,6 @@ struct CameraFooterView: View {
         CameraFooterView()
     }
     .preferredColorScheme(.dark)
+    .environmentObject(CameraModel())
+    .modelContainer(for: VideoItem.self, inMemory: true)
 }
