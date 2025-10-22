@@ -30,29 +30,39 @@ struct CameraPreviewView: View {
                 )
                 .allowsHitTesting(false)
 
-                HStack {
-                    RoundedButton(
-                        systemName: "bolt.fill",
-                        foreground: .white,
-                        background: .black.opacity(0.35),
-                        size: buttonSize
-                    ) {
-                        // TODO: action for left button
+                VStack {
+                    HStack {
+                        if camera.captureStatus.isRecording {
+                            RecordingTimeView(time: camera.captureStatus.currentTime)
+                        }
                     }
-
+                    
                     Spacer()
-
-                    RoundedButton(
-                        systemName: "camera.viewfinder",
-                        foreground: .white,
-                        background: .black.opacity(0.35),
-                        size: buttonSize
-                    ) {
-                        // TODO: action for right button
+                    
+                    HStack {
+                        RoundedButton(
+                            systemName: "bolt.fill",
+                            foreground: .white,
+                            background: .black.opacity(0.35),
+                            size: buttonSize
+                        ) {
+                            // TODO: action for left button
+                        }
+                        
+                        Spacer()
+                        
+                        RoundedButton(
+                            systemName: "camera.viewfinder",
+                            foreground: .white,
+                            background: .black.opacity(0.35),
+                            size: buttonSize
+                        ) {
+                            // TODO: action for right button
+                        }
                     }
                 }
                 .padding(.horizontal, buttonPadding)
-                .padding(.bottom, buttonPadding)
+                .padding(.vertical, 24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -103,4 +113,5 @@ private struct RoundedButton: View {
             .padding(.horizontal, 24)
     }
     .environmentObject(CameraModel())
+    .preferredColorScheme(.dark)
 }

@@ -1,8 +1,31 @@
 // CameraSession.swift
 import Foundation
 @preconcurrency import AVFoundation
+import Combine
 
 actor CaptureService: NSObject {
+    enum CaptureStatus {
+        case idle
+        case recording(duration: TimeInterval = 0.0)
+        
+        var isRecording: Bool {
+            switch self {
+            case .idle: return false
+            case .recording: return true
+            }
+        }
+        
+        var currentTime: TimeInterval {
+            if case .recording(let duration) = self {
+                return duration
+            }
+            
+            return .zero
+        }
+    }
+    
+    @Published private(set) var status: CaptureStatus = .idle
+    
     nonisolated let previewSource: PreviewSource
     
     // Underlying capture objects (kept private)
@@ -10,6 +33,10 @@ actor CaptureService: NSObject {
     private let movieOutput = AVCaptureMovieFileOutput()
     private var videoInput: AVCaptureDeviceInput?
     private var audioInput: AVCaptureDeviceInput?
+    
+    // The interval at which to update the recording time.
+    private let refreshInterval = TimeInterval(0.25)
+    private var timerCancellable: AnyCancellable?
 
     // Delegate proxy to forward recording callbacks to a target
     private var recordingDelegateTarget: (any AVCaptureFileOutputRecordingDelegate)?
@@ -109,16 +136,23 @@ actor CaptureService: NSObject {
     }
 
     func startRecording(to url: URL) {
+        guard !movieOutput.isRecording else { return }
+        
         Task {
+            guard let connection = movieOutput.connection(with: .video) else {
+                fatalError("Config error. No video connection found")
+            }
             // Ensure output is attached (in case configure was customized)
             if !session.outputs.contains(movieOutput), session.canAddOutput(movieOutput) {
                 session.addOutput(movieOutput)
             }
 
-            if let connection = movieOutput.connection(with: .video),
-               connection.isVideoStabilizationSupported {
+            if connection.isVideoStabilizationSupported {
                 connection.preferredVideoStabilizationMode = .auto
             }
+            
+            // Start a timer to update the recording time.
+            startMonitoringDuration()
 
             await MainActor.run {
                 // Pass self as delegate; the delegate method is nonisolated and will not touch actor state directly.
@@ -128,9 +162,10 @@ actor CaptureService: NSObject {
     }
 
     func stopRecording() {
-        if movieOutput.isRecording {
-            movieOutput.stopRecording()
-        }
+        guard movieOutput.isRecording else { return }
+        
+        movieOutput.stopRecording()
+        stopMonitoringDuration()
     }
 }
 
@@ -157,5 +192,35 @@ extension CaptureService: AVCaptureFileOutputRecordingDelegate {
                                   error: error)
             }
         }
+    }
+}
+
+private extension CaptureService {
+    // Starts a timer to update the recording time.
+    func startMonitoringDuration() {
+        status = .recording(duration: 0.0)
+        
+        timerCancellable = Timer.publish(every: refreshInterval, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                
+                // Hop back to the actor before mutating actor state.
+                Task {
+                    let duration = await self.movieOutput.recordedDuration.seconds
+                    await self.updateStatusRecording(duration: duration)
+                }
+            }
+    }
+    
+    /// Stops the timer and resets the time to `CMTime.zero`.
+    func stopMonitoringDuration() {
+        timerCancellable?.cancel()
+        status = .idle
+    }
+    
+    // Actor-isolated helper to set status safely.
+    func updateStatusRecording(duration: TimeInterval) {
+        status = .recording(duration: duration)
     }
 }

@@ -25,6 +25,9 @@ final class CameraModel: NSObject, ObservableObject {
     @Published private(set) var isRecording: Bool = false
     @Published private(set) var lastError: String?
     
+    // Make this a stored, published property that we update from observeState()
+    @Published private(set) var captureStatus: CaptureService.CaptureStatus = .idle
+    
     /// An object that provides the connection between the capture session and the video preview layer.
     var previewSource: PreviewSource { captureService.previewSource }
 
@@ -33,6 +36,9 @@ final class CameraModel: NSObject, ObservableObject {
 
     // Completion handler for recording
     private var recordingCompletion: ((URL) -> Void)?
+    
+    // Keep a task reference so we can cancel observation if needed
+    private var statusObserverTask: Task<Void, Never>?
 
     override init() {
         // Precompute current authorization
@@ -83,7 +89,7 @@ final class CameraModel: NSObject, ObservableObject {
         Task {
             do {
                 // Configure the actor-backed session
-                let configuredSession = try await captureService.configure(
+                let _ = try await captureService.configure(
                     preset: .high,
                     cameraPosition: .back,
                     includeAudio: true
@@ -91,6 +97,9 @@ final class CameraModel: NSObject, ObservableObject {
 
                 // Start running
                 await captureService.startRunning()
+                
+                observeState()
+                
                 isSessionRunning = true
             } catch {
                 lastError = "Failed to start session: \(error.localizedDescription)"
@@ -125,7 +134,6 @@ final class CameraModel: NSObject, ObservableObject {
             await captureService.setRecordingDelegateTarget(self)
             // Start recording
             await captureService.startRecording(to: outputURL)
-            isRecording = true
         }
     }
 
@@ -133,7 +141,6 @@ final class CameraModel: NSObject, ObservableObject {
         guard isRecording else { return }
         Task {
             await captureService.stopRecording()
-            // isRecording will be set to false in delegate callback
         }
     }
 }
@@ -149,8 +156,6 @@ extension CameraModel: AVCaptureFileOutputRecordingDelegate {
                 }
 
                 let completion = self.recordingCompletion
-
-                self.isRecording = false
                 
                 if let error {
                     self.lastError = "Recording failed: \(error.localizedDescription)"
@@ -166,8 +171,8 @@ extension CameraModel: AVCaptureFileOutputRecordingDelegate {
 
 // MARK: - Private Functions
 
-extension CameraModel {
-    private static func translate(_ status: AVAuthorizationStatus) -> AuthorizationState {
+private extension CameraModel {
+    static func translate(_ status: AVAuthorizationStatus) -> AuthorizationState {
         switch status {
         case .authorized: return .authorized
         case .denied: return .denied
@@ -177,12 +182,30 @@ extension CameraModel {
         }
     }
 
-    private static func makeDocumentsURLWithTimestamp(extension ext: String) -> URL {
+    static func makeDocumentsURLWithTimestamp(extension ext: String) -> URL {
         let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         let name = "VID_\(formatter.string(from: Date())).\(ext)"
         return docs.appendingPathComponent(name, isDirectory: false)
+    }
+    
+    func observeState() {
+        // Cancel previous observer if any
+        statusObserverTask?.cancel()
+        
+        // Bridge the actor's @Published status to our @Published captureStatus on the main actor
+        statusObserverTask = Task { [weak self] in
+            guard let self else { return }
+            // Access the actor's publisher in the actor context, then iterate its AsyncSequence of values
+            for await status in await captureService.$status.values {
+                // Hop to the main actor (we are already @MainActor, but this keeps intent clear)
+                await MainActor.run {
+                    self.captureStatus = status
+                    self.isRecording = status.isRecording
+                }
+            }
+        }
     }
 }
