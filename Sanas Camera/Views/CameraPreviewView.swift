@@ -13,9 +13,11 @@ struct CameraPreviewView: View {
     @EnvironmentObject private var camera: CameraModel
     
     private let cornerRadius: CGFloat = 16
-    private let buttonSize: CGFloat = 45
+    private let buttonSize: CGFloat = 50
     private let buttonIconSize: CGFloat = 24
     private let buttonPadding: CGFloat = 16
+    
+    @State private var blurRadius = CGFloat.zero
 
     var body: some View {
         GeometryReader { proxy in
@@ -25,6 +27,8 @@ struct CameraPreviewView: View {
                     .scaledToFill()
                     .frame(width: proxy.size.width, height: proxy.size.height) // <- bind to parent size
                     .clipped()
+                    .blur(radius: blurRadius, opaque: true)
+                    .onChange(of: camera.isSwitchingCameras, updateBlurRadius(_:_:))
 
                 LinearGradient(
                     colors: [.clear, .clear, .black.opacity(0.28), .black.opacity(0.5)],
@@ -59,7 +63,7 @@ struct CameraPreviewView: View {
                         Spacer()
                         
                         Button {
-                            // TODO: action for right button
+                            camera.switchCamera()
                         } label: {
                             Image(uiImage: Lucide.switchCamera)
                                 .resizable()
@@ -68,6 +72,8 @@ struct CameraPreviewView: View {
                                 .frame(width: buttonIconSize, height: buttonIconSize)
                         }
                         .frame(width: buttonSize, height: buttonSize)
+                        .disabled(camera.captureStatus.isRecording)
+                        .allowsHitTesting(!camera.isSwitchingCameras)
                     }
                 }
                 .padding(.horizontal, buttonPadding)
@@ -83,6 +89,12 @@ struct CameraPreviewView: View {
             .frame(width: proxy.size.width, height: proxy.size.height) // ensure overlay matches exact size
         }
         // Let the parent decide the size; GeometryReader will adapt to it.
+    }
+    
+    func updateBlurRadius(_: Bool, _ isSwitching: Bool) {
+        withAnimation {
+            blurRadius = isSwitching ? 30 : 0
+        }
     }
 }
 

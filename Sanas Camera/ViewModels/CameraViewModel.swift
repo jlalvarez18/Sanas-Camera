@@ -36,6 +36,9 @@ final class CameraModel: NSObject, ObservableObject {
     @Published private(set) var isTorchAvailable: Bool = false
     @Published private(set) var torchMode: AVCaptureDevice.TorchMode = .off
     
+    /// A Boolean value that indicates whether the app is currently switching video devices.
+    private(set) var isSwitchingCameras = false
+    
     /// An object that provides the connection between the capture session and the video preview layer.
     var previewSource: PreviewSource { captureService.previewSource }
 
@@ -103,8 +106,7 @@ final class CameraModel: NSObject, ObservableObject {
                 // Configure the actor-backed session
                 let _ = try await captureService.configure(
                     preset: .high,
-                    cameraPosition: .back,
-                    includeAudio: true
+                    cameraPosition: .back
                 )
 
                 // Start running
@@ -123,6 +125,7 @@ final class CameraModel: NSObject, ObservableObject {
     func stopSession() {
         Task {
             await captureService.stopRunning()
+
             isSessionRunning = false
         }
     }
@@ -162,6 +165,16 @@ final class CameraModel: NSObject, ObservableObject {
     func toggleTorchLight() {
         Task {
             await captureService.toggleTorch()
+        }
+    }
+    
+    func switchCamera() {
+        Task {
+            isSwitchingCameras = true
+            
+            await captureService.switchCamera()
+            
+            isSwitchingCameras = false
         }
     }
 }

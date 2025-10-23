@@ -32,6 +32,9 @@ actor CaptureService: NSObject {
     
     nonisolated let previewSource: PreviewSource
     
+    // An object the service uses to retrieve capture devices.
+    private let deviceLookup = DeviceLookup()
+    
     // Underlying capture objects (kept private)
     private let session = AVCaptureSession()
     private let movieOutput = AVCaptureMovieFileOutput()
@@ -45,7 +48,14 @@ actor CaptureService: NSObject {
     // Delegate proxy to forward recording callbacks to a target
     private var recordingDelegateTarget: (any AVCaptureFileOutputRecordingDelegate)?
     
-    private var currentDevice: AVCaptureDevice?
+    // The device for the active video input.
+    private var currentDevice: AVCaptureDevice {
+        guard let device = videoInput?.device else {
+            fatalError("No device found for current video input.")
+        }
+        return device
+    }
+    
     private var torchIsAvailableObservation: NSKeyValueObservation?
     private var torchIsActiveObservation: NSKeyValueObservation?
     private var torchModeObservation: NSKeyValueObservation?
@@ -68,72 +78,69 @@ actor CaptureService: NSObject {
         torchIsActiveObservation?.invalidate()
         torchModeObservation?.invalidate()
     }
+    
+    enum SetupState {
+        case idle
+        case configuring
+        case ready
+    }
+    
+    private var setupState: SetupState = .idle
 
     // Configure session (idempotent). Returns the configured AVCaptureSession
     // so the caller on the main actor can attach it to an AVCaptureVideoPreviewLayer.
-    func configure(preset: AVCaptureSession.Preset = .high,
-                   cameraPosition: AVCaptureDevice.Position = .back,
-                   includeAudio: Bool = true) throws -> AVCaptureSession {
-        session.beginConfiguration()
-
-        if session.canSetSessionPreset(preset) {
-            session.sessionPreset = preset
+    func configure(preset: AVCaptureSession.Preset = .high, cameraPosition: AVCaptureDevice.Position = .back) async throws {
+        // Prevent re-entrant configuration across suspension points
+        guard setupState == .idle else { return }
+        
+        // Mark as configuring *before* the first await so a second caller bails out
+        setupState = .configuring
+        
+        // Always clear the flag at exit
+        defer {
+            // only change it back to idle if the setup failed
+            if setupState == .configuring {
+                setupState = .idle
+            }
         }
-
-        // Video
+        
         do {
+            let defaultCamera = try await deviceLookup.defaultCamera
+            let defaultMic = try await deviceLookup.defaultMic
+            
             if let current = videoInput {
                 session.removeInput(current)
                 videoInput = nil
             }
-            let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: cameraPosition)
-            guard let vDevice = device else {
-                session.commitConfiguration()
-                throw NSError(domain: "CameraSession", code: -1, userInfo: [NSLocalizedDescriptionKey: "No camera available"])
-            }
             
-            let vInput = try AVCaptureDeviceInput(device: vDevice)
-            if session.canAddInput(vInput) {
-                session.addInput(vInput)
-                videoInput = vInput
-            }
-            
-            configureDevice(vDevice)
-        } catch {
-            session.commitConfiguration()
-            throw error
-        }
-
-        // Audio (optional)
-        if includeAudio {
             if let current = audioInput {
                 session.removeInput(current)
                 audioInput = nil
             }
-            if let mic = AVCaptureDevice.default(for: .audio) {
-                do {
-                    let aInput = try AVCaptureDeviceInput(device: mic)
-                    if session.canAddInput(aInput) {
-                        session.addInput(aInput)
-                        audioInput = aInput
-                    }
-                } catch {
-                    // ignore audio errors; proceed without audio
-                }
+            
+            // Enable using AirPods as a high-quality lapel microphone.
+            session.configuresApplicationAudioSessionForBluetoothHighQualityRecording = true
+            
+            if session.canSetSessionPreset(preset) {
+                session.sessionPreset = preset
             }
-        }
-
-        // Movie output
-        if !session.outputs.contains(movieOutput), session.canAddOutput(movieOutput) {
-            session.addOutput(movieOutput)
-            if let connection = movieOutput.connection(with: .video),
-               connection.isVideoStabilizationSupported {
+            
+            videoInput = try addInput(for: defaultCamera)
+            audioInput = try addInput(for: defaultMic)
+            
+            observeDeviceChanges(defaultCamera)
+            
+            // Movie output
+            try addOutput(movieOutput)
+            
+            if let connection = movieOutput.connection(with: .video), connection.isVideoStabilizationSupported {
                 connection.preferredVideoStabilizationMode = .auto
             }
-        }
 
-        session.commitConfiguration()
-        return session
+            setupState = .ready
+        } catch {
+            throw error
+        }
     }
 
     func startRunning() {
@@ -145,6 +152,11 @@ actor CaptureService: NSObject {
     func stopRunning() {
         if session.isRunning {
             session.stopRunning()
+            
+            if currentDevice.isTorchModeSupported(.off) {
+                currentDevice.torchMode = .off
+                setTorchMode(.off)
+            }
         }
     }
 
@@ -176,7 +188,7 @@ actor CaptureService: NSObject {
                 // Pass self as delegate; the delegate method is nonisolated and will not touch actor state directly.
                 movieOutput.startRecording(to: url, recordingDelegate: self)
                 // Re-assert torch shortly after recording starts (some formats reset torch)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                DispatchQueue.main.asyncAfter(deadline: .now()) {
                     Task { [weak self] in
                         await self?.reassertTorchIfNeeded()
                     }
@@ -193,8 +205,6 @@ actor CaptureService: NSObject {
     }
     
     func toggleTorch() {
-        guard let currentDevice = self.currentDevice else { return }
-
         wantsTorchOn.toggle()
 
         do {
@@ -217,20 +227,27 @@ actor CaptureService: NSObject {
             print("Error locking device for torch config: \(error)")
         }
     }
-
-    private func reassertTorchIfNeeded() {
-        guard wantsTorchOn, let device = currentDevice else { return }
-        guard device.hasTorch, device.isTorchAvailable, device.isTorchModeSupported(.on) else { return }
-
-        do {
-            try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-            if device.torchMode != .on {
-                try? device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
-                setTorchMode(.on)
+    
+    func switchCamera() {
+        Task {
+            let devices = await deviceLookup.cameras
+            
+            // Find the index of the currently selected video device.
+            let selectedIndex = devices.firstIndex(of: currentDevice) ?? 0
+            // Get the next index.
+            var nextIndex = selectedIndex + 1
+            // Wrap around if the next index is invalid.
+            if nextIndex == devices.endIndex {
+                nextIndex = 0
             }
-        } catch {
-            print("Error reasserting torch: \(error)")
+            
+            let nextDevice = devices[nextIndex]
+            // Change the session's active capture device.
+            changeCaptureDevice(to: nextDevice)
+            
+            // The app only calls this method in response to the user requesting to switch cameras.
+            // Set the new selection as the user's preferred camera.
+            AVCaptureDevice.userPreferredCamera = nextDevice
         }
     }
 }
@@ -302,9 +319,55 @@ private extension CaptureService {
         self.isTorchActive = active
     }
     
-    func configureDevice(_ device: AVCaptureDevice) {
-        self.currentDevice = device
+    @discardableResult
+    func addInput(for device: AVCaptureDevice) throws -> AVCaptureDeviceInput {
+        let input = try AVCaptureDeviceInput(device: device)
         
+        guard session.canAddInput(input) else {
+            throw CameraError.addInputFailed
+        }
+        
+        session.addInput(input)
+        
+        return input
+    }
+    
+    func addOutput(_ output: AVCaptureOutput) throws {
+        guard session.canAddOutput(output) else {
+            throw CameraError.addOutputFailed
+        }
+        
+        session.addOutput(output)
+    }
+    
+    func changeCaptureDevice(to device: AVCaptureDevice) {
+        // The service must have a valid video input prior to calling this method.
+        guard let currentInput = videoInput else {
+            fatalError()
+        }
+        
+        // Bracket the following configuration in a begin/commit configuration pair.
+        session.beginConfiguration()
+        defer {
+            session.commitConfiguration()
+        }
+        
+        // Remove the existing video input before attempting to connect a new one.
+        session.removeInput(currentInput)
+        
+        do {
+            // Attempt to connect a new input and device to the capture session.
+            videoInput = try addInput(for: device)
+            
+            // Register for device observations.
+            observeDeviceChanges(device)
+        } catch {
+            // Reconnect the existing camera on failure.
+            session.addInput(currentInput)
+        }
+    }
+    
+    func observeDeviceChanges(_ device: AVCaptureDevice) {
         torchIsAvailableObservation?.invalidate()
         
         torchIsAvailableObservation = device.observe(\.hasTorch, options: [.initial, .new], changeHandler: { [weak self] d, c in
@@ -332,5 +395,21 @@ private extension CaptureService {
             guard let self = self else { return }
             Task { await self.setTorchMode(dev.torchMode) }
         })
+    }
+    
+    func reassertTorchIfNeeded() {
+        guard wantsTorchOn else { return }
+        guard currentDevice.hasTorch, currentDevice.isTorchAvailable, currentDevice.isTorchModeSupported(.on) else { return }
+
+        do {
+            try currentDevice.lockForConfiguration()
+            defer { currentDevice.unlockForConfiguration() }
+            if currentDevice.torchMode != .on {
+                try? currentDevice.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                setTorchMode(.on)
+            }
+        } catch {
+            print("Error reasserting torch: \(error)")
+        }
     }
 }
