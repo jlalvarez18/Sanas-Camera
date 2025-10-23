@@ -11,6 +11,16 @@ import SwiftData
 struct CameraFooterView: View {
     @EnvironmentObject private var camera: CameraModel
     @Environment(\.modelContext) private var context
+    
+    // Making sure to only fetch 1 item as that is all we need
+    static var descriptor: FetchDescriptor<VideoItem> {
+        var descriptor = FetchDescriptor<VideoItem>(sortBy: [SortDescriptor(\.timestamp, order: .reverse)])
+        descriptor.fetchLimit = 1
+        
+        return descriptor
+    }
+    
+    @Query(descriptor) private var latestVideos: [VideoItem]
 
     // Callback provided by the parent to trigger navigation
     var onShowLibrary: () -> Void
@@ -59,15 +69,24 @@ struct CameraFooterView: View {
                     onShowLibrary()
                 } label: {
                     // Replace with a real thumbnail when available
-                    Image(systemName: "photo.stack")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: librarySize, height: librarySize)
-                        .clipShape(RoundedRectangle(cornerRadius: libraryCornerRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: libraryCornerRadius, style: .continuous)
-                                .stroke(Color.white.opacity(0.9), lineWidth: 2)
-                        )
+                    if let latestVideo = latestVideos.first, let image = latestVideo.thumbImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: librarySize, height: librarySize)
+                            .contentTransition(.opacity)
+                            .animation(.easeInOut(duration: 0.3), value: latestVideo.persistentModelID)
+                            .clipShape(RoundedRectangle(cornerRadius: libraryCornerRadius, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: libraryCornerRadius, style: .continuous)
+                                    .stroke(Color.white.opacity(0.9), lineWidth: 2)
+                            )
+                    } else {
+                        Image(systemName: "photo.stack")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: librarySize, height: librarySize)
+                    }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Video Library")
@@ -94,4 +113,3 @@ struct CameraFooterView: View {
     .environmentObject(CameraModel())
     .modelContainer(for: VideoItem.self, inMemory: true)
 }
-
