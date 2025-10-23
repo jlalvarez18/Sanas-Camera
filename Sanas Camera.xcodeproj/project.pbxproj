@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0D405FE72EA9FF3A008808F4 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 0D405FE62EA9FF3A008808F4 /* Lottie */; };
 		0D91909B2EA994F200473BC8 /* LucideIcons in Frameworks */ = {isa = PBXBuildFile; productRef = 0D91909A2EA994F200473BC8 /* LucideIcons */; };
 /* End PBXBuildFile section */
 
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0D91909B2EA994F200473BC8 /* LucideIcons in Frameworks */,
+				0D405FE72EA9FF3A008808F4 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +73,7 @@
 			name = "Sanas Camera";
 			packageProductDependencies = (
 				0D91909A2EA994F200473BC8 /* LucideIcons */,
+				0D405FE62EA9FF3A008808F4 /* Lottie */,
 			);
 			productName = "Sanas Camera";
 			productReference = 0D918FF22EA91D9600473BC8 /* Sanas Camera.app */;
@@ -102,6 +105,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				0D9190992EA994F200473BC8 /* XCRemoteSwiftPackageReference "lucide-icons-swift" */,
+				0D405FE52EA9FF3A008808F4 /* XCRemoteSwiftPackageReference "lottie-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0D918FF32EA91D9600473BC8 /* Products */;
@@ -345,6 +349,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		0D405FE52EA9FF3A008808F4 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.2;
+			};
+		};
 		0D9190992EA994F200473BC8 /* XCRemoteSwiftPackageReference "lucide-icons-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/JakubMazur/lucide-icons-swift.git";
@@ -356,6 +368,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0D405FE62EA9FF3A008808F4 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0D405FE52EA9FF3A008808F4 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
 		0D91909A2EA994F200473BC8 /* LucideIcons */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0D9190992EA994F200473BC8 /* XCRemoteSwiftPackageReference "lucide-icons-swift" */;

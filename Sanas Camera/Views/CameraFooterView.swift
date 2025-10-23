@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Lottie
 
 struct CameraFooterView: View {
     @EnvironmentObject private var camera: CameraModel
@@ -34,6 +35,11 @@ struct CameraFooterView: View {
     init(onShowLibrary: @escaping () -> Void = {}) {
         self.onShowLibrary = onShowLibrary
     }
+    
+    @State private var playbackMode: LottiePlaybackMode = .paused
+    @State private var startAnimation: DotLottieFile?
+    @State private var stopAnimation: DotLottieFile?
+    @State private var currentDotLottie: DotLottieFile?
 
     var body: some View {
         ZStack {
@@ -51,14 +57,42 @@ struct CameraFooterView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: camera.isRecording ? "stop.circle" : "record.circle")
-                        .resizable()
-                        .frame(width: recordSize, height: recordSize)
+                    if let file = currentDotLottie {
+                        LottieView(dotLottieFile: file)
+                            .playbackMode(playbackMode)
+                            .animationDidFinish { completed in
+                                playbackMode = .paused
+                            }
+                            .resizable()
+                            .frame(width: recordSize, height: recordSize)
+                            .onChange(of: camera.isRecording) { oldValue, newValue in
+                                if newValue {
+                                    currentDotLottie = startAnimation
+                                } else {
+                                    currentDotLottie = stopAnimation
+                                }
+                                
+                                DispatchQueue.main.async {
+                                    playbackMode = .playing(.fromProgress(0, toProgress: 1, loopMode: .playOnce))
+                                }
+                            }
+                    }
                 }
                 .buttonStyle(.plain)
+                .disabled(startAnimation == nil || stopAnimation == nil)
                 .accessibilityLabel(camera.isRecording ? "Stop Recording" : "Start Recording")
 
                 Spacer(minLength: 0)
+            }
+            .task {
+                do {
+                    startAnimation = try await DotLottieFile.named("Video_Start")
+                    stopAnimation = try await DotLottieFile.named("Video_Stop")
+                    
+                    currentDotLottie = startAnimation
+                } catch {
+                    
+                }
             }
 
             // Trailing photo library button (always hugs the right edge)
