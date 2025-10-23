@@ -54,6 +54,8 @@ struct CameraPreview: UIViewRepresentable {
             // to provide a live view of the captured content.
             Task { @MainActor in
                 previewLayer.session = session
+                previewLayer.videoGravity = .resizeAspectFill
+                previewLayer.contentsGravity = .resizeAspectFill
             }
         }
     }
