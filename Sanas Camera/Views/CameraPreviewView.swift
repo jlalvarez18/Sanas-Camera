@@ -7,12 +7,14 @@
 
 import SwiftUI
 import LucideIcons
+internal import AVFoundation
 
 struct CameraPreviewView: View {
     @EnvironmentObject private var camera: CameraModel
     
     private let cornerRadius: CGFloat = 16
-    private let buttonSize: CGFloat = 24
+    private let buttonSize: CGFloat = 45
+    private let buttonIconSize: CGFloat = 24
     private let buttonPadding: CGFloat = 16
 
     var body: some View {
@@ -41,16 +43,18 @@ struct CameraPreviewView: View {
                     Spacer()
                     
                     HStack {
-                        Button {
-                            // TODO: action for left button
-                        } label: {
-                            Image(uiImage: Lucide.zap)
-                                .resizable()
-                                .renderingMode(.template)
-                                .foregroundStyle(.white)
-                                .frame(width: buttonSize, height: buttonSize)
+                        if camera.isTorchAvailable {
+                            Button {
+                                camera.toggleTorchLight()
+                            } label: {
+                                Image(uiImage: camera.torchMode == .on ? Lucide.zap : Lucide.zapOff)
+                                    .resizable()
+                                    .renderingMode(.template)
+                                    .foregroundStyle(.white)
+                                    .frame(width: buttonIconSize, height: buttonIconSize)
+                            }
+                            .frame(width: buttonSize, height: buttonSize)
                         }
-                        .frame(width: buttonSize, height: buttonSize)
                         
                         Spacer()
                         
@@ -61,7 +65,7 @@ struct CameraPreviewView: View {
                                 .resizable()
                                 .renderingMode(.template)
                                 .foregroundStyle(.white)
-                                .frame(width: buttonSize, height: buttonSize)
+                                .frame(width: buttonIconSize, height: buttonIconSize)
                         }
                         .frame(width: buttonSize, height: buttonSize)
                     }

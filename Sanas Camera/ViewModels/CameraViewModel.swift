@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import AVFoundation
+internal import AVFoundation
 import UIKit
 import Combine
 
@@ -33,6 +33,9 @@ final class CameraModel: NSObject, ObservableObject {
     // Make this a stored, published property that we update from observeState()
     @Published private(set) var captureStatus: CaptureService.CaptureStatus = .idle
     
+    @Published private(set) var isTorchAvailable: Bool = false
+    @Published private(set) var torchMode: AVCaptureDevice.TorchMode = .off
+    
     /// An object that provides the connection between the capture session and the video preview layer.
     var previewSource: PreviewSource { captureService.previewSource }
 
@@ -44,6 +47,8 @@ final class CameraModel: NSObject, ObservableObject {
     
     // Keep a task reference so we can cancel observation if needed
     private var statusObserverTask: Task<Void, Never>?
+    private var isTorchAvailableObserverTask: Task<Void, Never>?
+    private var torchModeObserverTask: Task<Void, Never>?
     
     private var currentRecordingUUID: UUID?
 
@@ -153,6 +158,12 @@ final class CameraModel: NSObject, ObservableObject {
             await captureService.stopRecording()
         }
     }
+    
+    func toggleTorchLight() {
+        Task {
+            await captureService.toggleTorch()
+        }
+    }
 }
 
 // MARK: - AVCaptureFileOutputRecordingDelegate
@@ -253,11 +264,28 @@ private extension CameraModel {
             guard let self else { return }
             // Access the actor's publisher in the actor context, then iterate its AsyncSequence of values
             for await status in await captureService.$status.values {
-                // Hop to the main actor (we are already @MainActor, but this keeps intent clear)
-                await MainActor.run {
-                    self.captureStatus = status
-                    self.isRecording = status.isRecording
-                }
+                self.captureStatus = status
+                self.isRecording = status.isRecording
+            }
+        }
+        
+        isTorchAvailableObserverTask?.cancel()
+        
+        isTorchAvailableObserverTask = Task { [weak self] in
+            guard let self else { return }
+            
+            for await isTorchAvailable in await captureService.$isTorchAvailable.values {
+                self.isTorchAvailable = isTorchAvailable
+            }
+        }
+        
+        torchModeObserverTask?.cancel()
+        
+        torchModeObserverTask = Task { [weak self] in
+            guard let self else { return }
+            
+            for await torchMode in await captureService.$torchMode.values {
+                self.torchMode = torchMode
             }
         }
     }

@@ -1,6 +1,6 @@
 // CameraSession.swift
 import Foundation
-@preconcurrency import AVFoundation
+@preconcurrency internal import AVFoundation
 import Combine
 
 actor CaptureService: NSObject {
@@ -25,6 +25,10 @@ actor CaptureService: NSObject {
     }
     
     @Published private(set) var status: CaptureStatus = .idle
+    @Published private(set) var isTorchAvailable: Bool = false
+    @Published private(set) var torchMode: AVCaptureDevice.TorchMode = .off
+    @Published private(set) var isTorchActive: Bool = false
+    private var wantsTorchOn: Bool = false
     
     nonisolated let previewSource: PreviewSource
     
@@ -40,6 +44,11 @@ actor CaptureService: NSObject {
 
     // Delegate proxy to forward recording callbacks to a target
     private var recordingDelegateTarget: (any AVCaptureFileOutputRecordingDelegate)?
+    
+    private var currentDevice: AVCaptureDevice?
+    private var torchIsAvailableObservation: NSKeyValueObservation?
+    private var torchIsActiveObservation: NSKeyValueObservation?
+    private var torchModeObservation: NSKeyValueObservation?
 
     // Public inspection
     var isRunning: Bool {
@@ -52,6 +61,12 @@ actor CaptureService: NSObject {
     
     override init() {
         previewSource = DefaultPreviewSource(session: session)
+    }
+    
+    deinit {
+        torchIsAvailableObservation?.invalidate()
+        torchIsActiveObservation?.invalidate()
+        torchModeObservation?.invalidate()
     }
 
     // Configure session (idempotent). Returns the configured AVCaptureSession
@@ -76,11 +91,14 @@ actor CaptureService: NSObject {
                 session.commitConfiguration()
                 throw NSError(domain: "CameraSession", code: -1, userInfo: [NSLocalizedDescriptionKey: "No camera available"])
             }
+            
             let vInput = try AVCaptureDeviceInput(device: vDevice)
             if session.canAddInput(vInput) {
                 session.addInput(vInput)
                 videoInput = vInput
             }
+            
+            configureDevice(vDevice)
         } catch {
             session.commitConfiguration()
             throw error
@@ -157,6 +175,12 @@ actor CaptureService: NSObject {
             await MainActor.run {
                 // Pass self as delegate; the delegate method is nonisolated and will not touch actor state directly.
                 movieOutput.startRecording(to: url, recordingDelegate: self)
+                // Re-assert torch shortly after recording starts (some formats reset torch)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    Task { [weak self] in
+                        await self?.reassertTorchIfNeeded()
+                    }
+                }
             }
         }
     }
@@ -166,6 +190,48 @@ actor CaptureService: NSObject {
         
         movieOutput.stopRecording()
         stopMonitoringDuration()
+    }
+    
+    func toggleTorch() {
+        guard let currentDevice = self.currentDevice else { return }
+
+        wantsTorchOn.toggle()
+
+        do {
+            try currentDevice.lockForConfiguration()
+            defer { currentDevice.unlockForConfiguration() }
+
+            if wantsTorchOn,
+               currentDevice.hasTorch,
+               currentDevice.isTorchAvailable,
+               currentDevice.isTorchModeSupported(.on) {
+                try? currentDevice.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                setTorchMode(.on)
+            } else {
+                if currentDevice.isTorchModeSupported(.off) {
+                    currentDevice.torchMode = .off
+                    setTorchMode(.off)
+                }
+            }
+        } catch {
+            print("Error locking device for torch config: \(error)")
+        }
+    }
+
+    private func reassertTorchIfNeeded() {
+        guard wantsTorchOn, let device = currentDevice else { return }
+        guard device.hasTorch, device.isTorchAvailable, device.isTorchModeSupported(.on) else { return }
+
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            if device.torchMode != .on {
+                try? device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                setTorchMode(.on)
+            }
+        } catch {
+            print("Error reasserting torch: \(error)")
+        }
     }
 }
 
@@ -222,5 +288,49 @@ private extension CaptureService {
     // Actor-isolated helper to set status safely.
     func updateStatusRecording(duration: TimeInterval) {
         status = .recording(duration: duration)
+    }
+    
+    func setTorchMode(_ mode: AVCaptureDevice.TorchMode) {
+        self.torchMode = mode
+    }
+    
+    func setIsTorchAvailable(_ isAvailable: Bool) {
+        self.isTorchAvailable = isAvailable
+    }
+    
+    func setIsTorchActive(_ active: Bool) {
+        self.isTorchActive = active
+    }
+    
+    func configureDevice(_ device: AVCaptureDevice) {
+        self.currentDevice = device
+        
+        torchIsAvailableObservation?.invalidate()
+        
+        torchIsAvailableObservation = device.observe(\.hasTorch, options: [.initial, .new], changeHandler: { [weak self] d, c in
+            guard let self else { return }
+            
+            Task {
+                await self.setIsTorchAvailable(device.hasTorch)
+            }
+        })
+        
+        // Observe actual torch activity (LED on/off)
+        torchIsActiveObservation?.invalidate()
+        torchIsActiveObservation = device.observe(\.isTorchActive, options: [.initial, .new], changeHandler: { [weak self] dev, _ in
+            guard let self = self else { return }
+            Task { await self.setIsTorchActive(dev.isTorchActive) }
+            // If it turned off but user wanted it on, try to reassert
+            if !dev.isTorchActive {
+                Task { [weak self] in await self?.reassertTorchIfNeeded() }
+            }
+        })
+
+        // Observe mode changes as well (e.g., system toggles)
+        torchModeObservation?.invalidate()
+        torchModeObservation = device.observe(\.torchMode, options: [.initial, .new], changeHandler: { [weak self] dev, _ in
+            guard let self = self else { return }
+            Task { await self.setTorchMode(dev.torchMode) }
+        })
     }
 }
