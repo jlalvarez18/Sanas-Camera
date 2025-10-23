@@ -23,56 +23,28 @@ struct GalleryView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                GeometryReader { proxy in
-                    let width = proxy.size.width
-                    let cardW = cardWidth(for: width)
-                    let cardH = cardHeight(for: cardW)
-
-                    // Full-width horizontal carousel with paging-like snapping
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 16) {
-                            ForEach(videos.indices, id: \.self) { index in
-                                let video = videos[index]
-                                VideoCard(video: video)
-                                    .frame(width: cardW, height: cardH)
-                                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .onTapGesture {
-                                        if let url = video.localVideoURL ?? URL(string: video.filePath) {
-                                            selectedVideo = IdentifiedURL(url: url)
-                                        } else {
-                                            print("GalleryView: Invalid video.filePath: \(video.filePath)")
-                                        }
-                                    }
-                                    .scrollTargetLayout() // enables paging target on iOS 17+
+                ScrollView {
+                    PeekingScrollView(videos, contentMargin: 24, spacing: 16) { index, video in
+                        VideoCard(video: video)
+                            .onTapGesture {
+                                if let url = video.localVideoURL ?? URL(string: video.filePath) {
+                                    selectedVideo = IdentifiedURL(url: url)
+                                } else {
+                                    print("GalleryView: Invalid video.filePath: \(video.filePath)")
+                                }
                             }
-                        }
-                        .padding(.vertical, 12)
                     }
-                    .scrollTargetBehavior(.paging) // iOS 17+; provides snapping/paging feel
-                    .contentMargins(.horizontal, horizontalPadding, for: .scrollContent) // keeps first/last centered
-                    .safeAreaPadding(.horizontal, 0)
-                    .sheet(item: $selectedVideo) { item in
-                        AVPlayerView(url: item.url)
-                            .ignoresSafeArea()
-                    }
+                    .scrollIndicators(.hidden)
+                }
+                .sheet(item: $selectedVideo) { item in
+                    AVPlayerView(url: item.url)
+                        .ignoresSafeArea()
                 }
             }
         }
         .navigationTitle("Gallery")
         .navigationBarTitleDisplayMode(.inline)
     }
-    
-    // MARK: - Layout helpers
-    
-    private func cardWidth(for containerWidth: CGFloat) -> CGFloat {
-        return max(280, min(containerWidth * 0.86, 520))
-    }
-    
-    private func cardHeight(for cardWidth: CGFloat) -> CGFloat {
-        cardWidth * (16.0 / 9.0)
-    }
-    
-    private var horizontalPadding: CGFloat { 20 }
 }
 
 // MARK: - Video Card
@@ -133,15 +105,20 @@ private struct VideoCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             
             // Play overlay
-            Button {
+            VStack {
+                Spacer()
                 
-            } label: {
-                Image(uiImage: Lucide.play)
-                    .resizable()
-                    .renderingMode(.template)
-                    .frame(width: 40, height: 40)
-                    .foregroundStyle(.white)
+                Button {
+                    
+                } label: {
+                    Image(uiImage: Lucide.play)
+                        .resizable()
+                        .renderingMode(.template)
+                        .frame(width: 40, height: 40)
+                        .foregroundStyle(.white)
+                }
             }
+            .padding(.bottom, 24.0)
         }
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
