@@ -22,7 +22,7 @@ final class VideoItem {
     }
     
     static func sampleData() -> [VideoItem] {
-        let item1 = VideoItem(timestamp: Date(), filePath: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", thumbFilePath: "https://fastly.picsum.photos/id/16/400/711.jpg?hmac=OkXiUCLo5f9ipTebcftscPJqZhNP5oCzdbiRPvb2Jpo")
+        let item1 = VideoItem(timestamp: Date(), filePath: "https://video-previews.elements.envatousercontent.com/h264-video-previews/315b5d0f-cca5-41c0-824f-e99e2dcfbe6d/40108191.mp4", thumbFilePath: "https://fastly.picsum.photos/id/16/400/711.jpg?hmac=OkXiUCLo5f9ipTebcftscPJqZhNP5oCzdbiRPvb2Jpo")
         let item2 = VideoItem(timestamp: Date().addingTimeInterval(200), filePath: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", thumbFilePath: "https://fastly.picsum.photos/id/28/400/711.jpg?hmac=gQKhkVoZNBL6IucovMKjF8Gs1pug4MeShrWn9C26BZI")
         
         return [item1, item2]

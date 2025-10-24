@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import AVKit
 import LucideIcons
+import Combine
 
 struct GalleryView: View {
     @Environment(\.modelContext) private var context
@@ -36,36 +37,13 @@ struct GalleryView: View {
                     .scrollIndicators(.hidden)
                 }
                 .sheet(item: $selectedVideo) { item in
-                    PlayerSheet(url: item.url)
+                    VideoPlayerSheet(url: item.url)
                         .ignoresSafeArea()
                 }
             }
         }
         .navigationTitle("Gallery")
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// MARK: - Simple AVPlayer Sheet
-
-private struct PlayerSheet: View, Identifiable {
-    let id = UUID()
-    let url: URL
-    
-    let player: AVPlayer
-    
-    init(url: URL) {
-        self.url = url
-        self.player = AVPlayer(url: url)
-    }
-    
-    var body: some View {
-        VideoPlayer(player: player)
-            .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    player.play()
-                }
-            }
     }
 }
 
@@ -89,4 +67,3 @@ private struct IdentifiedURL: Identifiable, Equatable {
     }
     .preferredColorScheme(.dark)
 }
-
