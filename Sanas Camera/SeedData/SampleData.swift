@@ -37,10 +37,10 @@ class SampleData {
     }
     
     private func insertSampleData() {
-        let item1 = VideoItem(timestamp: Date(), filePath: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", thumbFilePath: "https://fastly.picsum.photos/id/16/400/711.jpg?hmac=OkXiUCLo5f9ipTebcftscPJqZhNP5oCzdbiRPvb2Jpo")
-        let item2 = VideoItem(timestamp: Date().addingTimeInterval(200), filePath: "", thumbFilePath: "https://fastly.picsum.photos/id/28/400/711.jpg?hmac=gQKhkVoZNBL6IucovMKjF8Gs1pug4MeShrWn9C26BZI")
+        let items = VideoItem.sampleData()
         
-        context.insert(item1)
-        context.insert(item2)
+        for item in items {
+            context.insert(item)
+        }
     }
 }

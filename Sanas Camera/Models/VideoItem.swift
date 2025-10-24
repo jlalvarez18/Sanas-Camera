@@ -20,6 +20,13 @@ final class VideoItem {
         self.filePath = filePath
         self.thumbFilePath = thumbFilePath
     }
+    
+    static func sampleData() -> [VideoItem] {
+        let item1 = VideoItem(timestamp: Date(), filePath: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", thumbFilePath: "https://fastly.picsum.photos/id/16/400/711.jpg?hmac=OkXiUCLo5f9ipTebcftscPJqZhNP5oCzdbiRPvb2Jpo")
+        let item2 = VideoItem(timestamp: Date().addingTimeInterval(200), filePath: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", thumbFilePath: "https://fastly.picsum.photos/id/28/400/711.jpg?hmac=gQKhkVoZNBL6IucovMKjF8Gs1pug4MeShrWn9C26BZI")
+        
+        return [item1, item2]
+    }
 }
 
 // MARK: - VideoItem helpers
@@ -73,6 +80,17 @@ extension VideoItem {
     // Remote thumbnail URL (only http/https)
     var remoteThumbURL: URL? {
         guard let url = URL(string: thumbFilePath),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https"
+        else {
+            return nil
+        }
+        return url
+    }
+    
+    // Remote video URL (only http/https)
+    var remoteVideoURL: URL? {
+        guard let url = URL(string: filePath),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https"
         else {
