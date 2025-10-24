@@ -153,9 +153,17 @@ actor CaptureService: NSObject {
         if session.isRunning {
             session.stopRunning()
             
-            if currentDevice.isTorchModeSupported(.off) {
-                currentDevice.torchMode = .off
-                setTorchMode(.off)
+            do {
+                if currentDevice.isTorchModeSupported(.off) {
+                    try currentDevice.lockForConfiguration()
+                    
+                    currentDevice.torchMode = .off
+                    setTorchMode(.off)
+                    
+                    currentDevice.unlockForConfiguration()
+                }
+            } catch {
+                
             }
         }
     }
